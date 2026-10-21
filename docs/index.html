@@ -1,0 +1,37 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Checklist answers</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{font:14px system-ui,sans-serif;margin:16px;background:#0f1115;color:#e6e6e6}
+select,input{background:#1b1f27;color:#e6e6e6;border:1px solid #333;padding:4px 6px;margin-right:8px}
+table{border-collapse:collapse;width:100%;margin-top:10px}td,th{padding:3px 6px;border-bottom:1px solid #222;text-align:left;vertical-align:top}
+th{position:sticky;top:0;background:#171a21;cursor:pointer}.YES{color:#4ade80}.NO{color:#f87171}.NOT_READY{color:#fbbf24}
+#counts span{display:inline-block;margin:2px 10px 2px 0}.muted{color:#888}
+</style></head><body>
+<h2>Point-in-time checklist answers <span class="muted">(data known before 09:25 ET on the date)</span></h2>
+<div>Ticker <select id="tk"></select> Date <select id="dt"></select>
+Owner <select id="ow"><option value="">all</option></select>
+Answer <select id="an"><option value="">all</option><option>YES</option><option>NO</option><option>NOT_READY</option></select>
+Search <input id="q" placeholder="row id or reason"></div>
+<div id="counts"></div><div id="reasons" class="muted"></div>
+<table><thead><tr><th>row_id</th><th>owner</th><th>answer</th><th>reason</th><th>data_as_of</th></tr></thead><tbody id="tb"></tbody></table>
+<script>
+let idx=[],cur=null;const $=i=>document.getElementById(i);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+fetch('data/index.json').then(r=>r.json()).then(j=>{idx=j;
+ const tks=[...new Set(j.map(x=>x.ticker))].sort();$('tk').innerHTML=tks.map(t=>`<option>${t}</option>`).join('');
+ const p=new URLSearchParams(location.search);if(p.get('ticker'))$('tk').value=p.get('ticker');fillDates(p.get('date'));});
+function fillDates(want){const ds=idx.filter(x=>x.ticker==$('tk').value).map(x=>x.date).sort().reverse();
+ $('dt').innerHTML=ds.map(d=>`<option>${d}</option>`).join('');if(want&&ds.includes(want))$('dt').value=want;load();}
+function load(){const e=idx.find(x=>x.ticker==$('tk').value&&x.date==$('dt').value);if(!e)return;
+ history.replaceState(null,'',`?ticker=${e.ticker}&date=${e.date}`);
+ fetch('data/'+e.file).then(r=>r.json()).then(j=>{cur=j;const ows=[...new Set(j.rows.map(r=>r[1]))].sort(),keep=$('ow').value;
+  $('ow').innerHTML='<option value="">all</option>'+ows.map(o=>`<option>${esc(o)}</option>`).join('');$('ow').value=ows.includes(keep)?keep:'';render();});}
+function render(){if(!cur)return;const o=$('ow').value,a=$('an').value,q=$('q').value.toLowerCase();
+ const base=cur.rows.filter(r=>!o||r[1]==o);const c={YES:0,NO:0,NOT_READY:0};base.forEach(r=>c[r[2]]=(c[r[2]]||0)+1);
+ $('counts').innerHTML=`<span>rows ${base.length}</span>`+Object.entries(c).map(([k,v])=>`<span class="${k}">${k} ${v} (${base.length?(100*v/base.length).toFixed(1):0}%)</span>`).join('');
+ const rc={};base.filter(r=>r[2]=='NOT_READY').forEach(r=>{const k=r[3].split(':')[0];rc[k]=(rc[k]||0)+1});
+ $('reasons').textContent='NOT_READY reasons: '+Object.entries(rc).sort((x,y)=>y[1]-x[1]).map(([k,v])=>`${k} ${v}`).join(' · ');
+ const rows=base.filter(r=>(!a||r[2]==a)&&(!q||r[0].toLowerCase().includes(q)||r[3].toLowerCase().includes(q)));
+ $('tb').innerHTML=rows.slice(0,5000).map(r=>`<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td class="${r[2]}">${r[2]}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td></tr>`).join('')+(rows.length>5000?`<tr><td colspan=5 class=muted>${rows.length-5000} more rows: narrow the filter</td></tr>`:'');}
+$('tk').onchange=()=>fillDates();$('dt').onchange=load;['ow','an'].forEach(i=>$(i).onchange=render);$('q').oninput=render;
+</script></body></html>
